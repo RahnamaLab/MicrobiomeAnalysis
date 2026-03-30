@@ -9,14 +9,13 @@ set -euo pipefail
 #   sbatch qiime2_per_sample.sh ITS1
 #   sbatch qiime2_per_sample.sh ITS2
 ###############################################################################
-
 MARKER="${1:-ITS2}"
 
 ###############################################################################
 # INPUT FILES
 ###############################################################################
 
-MANIFEST="manifest_fixed.tsv"
+MANIFEST="manifest.tsv"
 METADATA="metadata.tsv"
 
 ###############################################################################
@@ -44,6 +43,7 @@ THREADS="${SLURM_CPUS_PER_TASK:-12}"
 # SOFTWARE
 ###############################################################################
 
+source /home/tntech.edu/ssalimi42/miniconda3/etc/profile.d/conda.sh
 conda activate /home/software/qiime2-2023.5
 
 spack load clustal-omega
@@ -134,7 +134,6 @@ build_ef1_classifier() {
   local ef1_tax_tsv="${workdir}/ef1_taxonomy.tsv"
   local ef1_tax_qza="${workdir}/ef1_ref_taxonomy.qza"
 
-  echo "[$(date)] Extracting TEF1 records only and creating safe IDs..."
   python <<'PY'
 import re
 
@@ -211,35 +210,19 @@ with open(infile, "r", encoding="utf-8", errors="ignore") as fin, \
             seq_lines.append(line)
 
     flush_record(header, seq_lines)
-
-print(f"Wrote {count} TEF1 reference sequences.")
 PY
 
-  if [[ ! -s "${ef1_clean_fasta}" || ! -s "${ef1_tax_tsv}" ]]; then
-    echo "ERROR: EF1 cleaned FASTA or taxonomy file is empty."
-    exit 1
-  fi
-
-  echo "[$(date)] Preview of cleaned EF1 FASTA:"
-  head -4 "${ef1_clean_fasta}"
-
-  echo "[$(date)] Preview of EF1 taxonomy:"
-  head -4 "${ef1_tax_tsv}"
-
-  echo "[$(date)] Importing EF1 reference sequences..."
   qiime tools import \
     --type 'FeatureData[Sequence]' \
     --input-path "${ef1_clean_fasta}" \
     --output-path "${ef1_ref_qza}"
 
-  echo "[$(date)] Importing EF1 taxonomy..."
   qiime tools import \
     --type 'FeatureData[Taxonomy]' \
     --input-format HeaderlessTSVTaxonomyFormat \
     --input-path "${ef1_tax_tsv}" \
     --output-path "${ef1_tax_qza}"
 
-  echo "[$(date)] Training EF1 classifier directly from cleaned TEF1 references..."
   qiime feature-classifier fit-classifier-naive-bayes \
     --i-reference-reads "${ef1_ref_qza}" \
     --i-reference-taxonomy "${ef1_tax_qza}" \
@@ -259,15 +242,6 @@ build_its_classifier() {
   if [[ -f "${out_classifier}" ]]; then
     echo "[$(date)] ${marker_name} classifier already exists: ${out_classifier}"
     return
-  fi
-
-  echo "[$(date)] Building ${marker_name} UNITE classifier..."
-
-  if [[ ! -f "${UNITE_FASTA}" || ! -f "${UNITE_TAXONOMY}" ]]; then
-    echo "ERROR: UNITE files not found."
-    echo "  FASTA: ${UNITE_FASTA}"
-    echo "  TAXONOMY: ${UNITE_TAXONOMY}"
-    exit 1
   fi
 
   local workdir="${CLASSIFIER_DIR}/${marker_name}_build"
@@ -318,346 +292,316 @@ case "${MARKER}" in
 esac
 
 ###############################################################################
-# OUTPUT FILE NAMES
+# PER-SAMPLE ROOT
 ###############################################################################
-
-DEMUX_QZA="${MARKER}-paired-end-demux.qza"
-DEMUX_QZV="${MARKER}-paired-end-demux.qzv"
-
-TRIMMED_QZA="${MARKER}-trimmed-paired-end-demux.qza"
-TRIMMED_QZV="${MARKER}-trimmed-paired-end-demux.qzv"
-
-TABLE_QZA="${MARKER}-trimmed-table.qza"
-REP_QZA="${MARKER}-trimmed-rep-seqs.qza"
-STATS_QZA="${MARKER}-trimmed-denoising-stats.qza"
-
-TABLE_QZV="${MARKER}-trimmed-table.qzv"
-REP_QZV="${MARKER}-trimmed-rep-seqs.qzv"
-STATS_QZV="${MARKER}-trimmed-denoising-stats.qzv"
-
-RETAINED_TABLE_QZA="${MARKER}-retained-hits-table.qza"
-RETAINED_TABLE_QZV="${MARKER}-retained-hits-table.qzv"
-RETAINED_REP_QZA="${MARKER}-retained-hits-rep-seqs.qza"
-RETAINED_REP_QZV="${MARKER}-retained-hits-rep-seqs.qzv"
-
-LENFILTER_REP_QZA="${MARKER}-retained-more-${MIN_SEQ_LEN}-rep-seqs.qza"
-LENFILTER_REP_QZV="${MARKER}-retained-more-${MIN_SEQ_LEN}-rep-seqs.qzv"
-LENFILTER_TABLE_QZA="${MARKER}-retained-more-${MIN_SEQ_LEN}-table.qza"
-LENFILTER_TABLE_QZV="${MARKER}-retained-more-${MIN_SEQ_LEN}-table.qzv"
-
-TAXONOMY_QZA="${MARKER}-taxonomy.qza"
-TAXONOMY_QZV="${MARKER}-taxonomy.qzv"
-TAXA_BARPLOT_QZV="${MARKER}-taxa-barplot.qzv"
 
 PER_SAMPLE_DIR="per_sample_${MARKER}"
-
-TREE_DIR="iqtree_${MARKER}"
-TREE_FASTA="${TREE_DIR}/${MARKER}-sequences.fasta"
-ALIGNED_FASTA="${TREE_DIR}/${MARKER}_aligned.fa"
-TRIMMED_FASTA="${TREE_DIR}/${MARKER}_trimmed.fa"
-
-mkdir -p "${TREE_DIR}" "${PER_SAMPLE_DIR}"
+mkdir -p "${PER_SAMPLE_DIR}"
 
 ###############################################################################
-# STEP 1. IMPORT READS
+# LOOP OVER SAMPLES
 ###############################################################################
-
-echo "[$(date)] STEP 1: Importing paired-end reads..."
-
-qiime tools import \
-  --type 'SampleData[PairedEndSequencesWithQuality]' \
-  --input-path "${MANIFEST}" \
-  --output-path "${DEMUX_QZA}" \
-  --input-format PairedEndFastqManifestPhred33V2
-
-qiime demux summarize \
-  --i-data "${DEMUX_QZA}" \
-  --o-visualization "${DEMUX_QZV}"
-
-###############################################################################
-# STEP 2. TRIM PRIMERS / ADAPTERS
-###############################################################################
-
-echo "[$(date)] STEP 2: Trimming primers with cutadapt..."
-
-qiime cutadapt trim-paired \
-  --i-demultiplexed-sequences "${DEMUX_QZA}" \
-  --p-front-f "${F_PRIMER}" \
-  --p-front-r "${R_PRIMER}" \
-  --p-error-rate 0.1 \
-  --p-overlap 3 \
-  --p-discard-untrimmed \
-  --p-match-adapter-wildcards True \
-  --p-match-read-wildcards False \
-  --p-minimum-length "${MIN_SEQ_LEN}" \
-  --o-trimmed-sequences "${TRIMMED_QZA}" \
-  --verbose > "${MARKER}-cutadapt-output.txt" 2>&1
-
-qiime demux summarize \
-  --i-data "${TRIMMED_QZA}" \
-  --o-visualization "${TRIMMED_QZV}"
-
-###############################################################################
-# STEP 3. DADA2 DENOISING + MERGING
-###############################################################################
-
-echo "[$(date)] STEP 3: Running DADA2..."
-
-qiime dada2 denoise-paired \
-  --i-demultiplexed-seqs "${TRIMMED_QZA}" \
-  --p-trim-left-f "${TRIM_LEFT_F}" \
-  --p-trim-left-r "${TRIM_LEFT_R}" \
-  --p-trunc-len-f "${TRUNC_LEN_F}" \
-  --p-trunc-len-r "${TRUNC_LEN_R}" \
-  --p-n-threads "${THREADS}" \
-  --o-table "${TABLE_QZA}" \
-  --o-representative-sequences "${REP_QZA}" \
-  --o-denoising-stats "${STATS_QZA}" \
-  --verbose > "${MARKER}-dada2-output.txt" 2>&1
-
-qiime feature-table summarize \
-  --i-table "${TABLE_QZA}" \
-  --o-visualization "${TABLE_QZV}" \
-  --m-sample-metadata-file "${METADATA}"
-
-qiime feature-table tabulate-seqs \
-  --i-data "${REP_QZA}" \
-  --o-visualization "${REP_QZV}"
-
-qiime metadata tabulate \
-  --m-input-file "${STATS_QZA}" \
-  --o-visualization "${STATS_QZV}"
-
-###############################################################################
-# STEP 4. FILTER LOW-FREQUENCY FEATURES
-###############################################################################
-
-echo "[$(date)] STEP 4: Filtering ASVs with frequency < ${MIN_FEATURE_FREQ}..."
-
-qiime feature-table filter-features \
-  --i-table "${TABLE_QZA}" \
-  --p-min-frequency "${MIN_FEATURE_FREQ}" \
-  --o-filtered-table "${RETAINED_TABLE_QZA}"
-
-qiime feature-table summarize \
-  --i-table "${RETAINED_TABLE_QZA}" \
-  --o-visualization "${RETAINED_TABLE_QZV}" \
-  --m-sample-metadata-file "${METADATA}"
-
-qiime feature-table filter-seqs \
-  --i-data "${REP_QZA}" \
-  --i-table "${RETAINED_TABLE_QZA}" \
-  --o-filtered-data "${RETAINED_REP_QZA}"
-
-qiime feature-table tabulate-seqs \
-  --i-data "${RETAINED_REP_QZA}" \
-  --o-visualization "${RETAINED_REP_QZV}"
-
-###############################################################################
-# STEP 5. FILTER REPRESENTATIVE SEQUENCES BY LENGTH
-###############################################################################
-
-echo "[$(date)] STEP 5: Keeping ASVs with length >= ${MIN_SEQ_LEN} bp..."
-
-TMP_EXPORT_DIR="${TREE_DIR}/tmp_retained_export"
-TMP_LEN_FASTA="${TREE_DIR}/tmp_lenfiltered.fasta"
-
-rm -rf "${TMP_EXPORT_DIR}"
-mkdir -p "${TMP_EXPORT_DIR}"
-
-qiime tools export \
-  --input-path "${RETAINED_REP_QZA}" \
-  --output-path "${TMP_EXPORT_DIR}"
-
-awk -v minlen="${MIN_SEQ_LEN}" '
-BEGIN { RS=">"; FS="\n" }
-NR > 1 {
-  header=$1
-  seq=""
-  for (i=2; i<=NF; i++) seq=seq $i
-  if (length(seq) >= minlen) {
-    print ">" header
-    print seq
-  }
-}
-' "${TMP_EXPORT_DIR}/dna-sequences.fasta" > "${TMP_LEN_FASTA}"
-
-qiime tools import \
-  --type 'FeatureData[Sequence]' \
-  --input-path "${TMP_LEN_FASTA}" \
-  --output-path "${LENFILTER_REP_QZA}"
-
-qiime feature-table tabulate-seqs \
-  --i-data "${LENFILTER_REP_QZA}" \
-  --o-visualization "${LENFILTER_REP_QZV}"
-
-qiime feature-table filter-features \
-  --i-table "${RETAINED_TABLE_QZA}" \
-  --m-metadata-file "${LENFILTER_REP_QZA}" \
-  --o-filtered-table "${LENFILTER_TABLE_QZA}"
-
-qiime feature-table summarize \
-  --i-table "${LENFILTER_TABLE_QZA}" \
-  --o-visualization "${LENFILTER_TABLE_QZV}" \
-  --m-sample-metadata-file "${METADATA}"
-
-rm -rf "${TMP_EXPORT_DIR}"
-rm -f "${TMP_LEN_FASTA}"
-
-###############################################################################
-# STEP 6. TAXONOMIC CLASSIFICATION
-###############################################################################
-
-echo "[$(date)] STEP 6: Classifying ${MARKER} ASVs..."
-
-qiime feature-classifier classify-sklearn \
-  --i-classifier "${CLASSIFIER}" \
-  --i-reads "${LENFILTER_REP_QZA}" \
-  --o-classification "${TAXONOMY_QZA}"
-
-qiime metadata tabulate \
-  --m-input-file "${TAXONOMY_QZA}" \
-  --o-visualization "${TAXONOMY_QZV}"
-
-qiime taxa barplot \
-  --i-table "${LENFILTER_TABLE_QZA}" \
-  --i-taxonomy "${TAXONOMY_QZA}" \
-  --m-metadata-file "${METADATA}" \
-  --o-visualization "${TAXA_BARPLOT_QZV}"
-
-###############################################################################
-# STEP 6B. SPLIT RESULTS PER SAMPLE
-###############################################################################
-
-echo "[$(date)] STEP 6B: Generating per-sample outputs..."
 
 awk 'BEGIN{FS="\t"} NR>1 && NF>0 {print $1}' "${METADATA}" | while read -r SAMPLE_ID; do
+  echo "[$(date)] ========================================================"
   echo "[$(date)] Processing sample: ${SAMPLE_ID}"
+  echo "[$(date)] ========================================================"
 
   SAMPLE_DIR="${PER_SAMPLE_DIR}/${SAMPLE_ID}"
   mkdir -p "${SAMPLE_DIR}"
 
+  SAMPLE_MANIFEST="${SAMPLE_DIR}/${SAMPLE_ID}_manifest.tsv"
   SAMPLE_METADATA="${SAMPLE_DIR}/${SAMPLE_ID}_metadata.tsv"
-  SAMPLE_TABLE_QZA="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-table.qza"
-  SAMPLE_TABLE_QZV="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-table.qzv"
 
-  SAMPLE_REP_QZA="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-rep-seqs.qza"
-  SAMPLE_REP_QZV="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-rep-seqs.qzv"
+  # Build one-sample manifest
+  awk -v sid="${SAMPLE_ID}" 'BEGIN{FS=OFS="\t"} NR==1 || $1==sid {print}' "${MANIFEST}" > "${SAMPLE_MANIFEST}"
 
-  SAMPLE_TAXA_BARPLOT_QZV="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-taxa-barplot.qzv"
-
-  SAMPLE_EXPORT_DIR="${SAMPLE_DIR}/exported_table"
-  SAMPLE_REP_EXPORT_DIR="${SAMPLE_DIR}/exported_rep_seqs"
-
+  # Build one-sample metadata
   grep -P "^#|^${SAMPLE_ID}\t" "${METADATA}" > "${SAMPLE_METADATA}"
 
-  qiime feature-table filter-samples \
-    --i-table "${LENFILTER_TABLE_QZA}" \
-    --m-metadata-file "${SAMPLE_METADATA}" \
-    --o-filtered-table "${SAMPLE_TABLE_QZA}"
+  # Skip if sample not found in manifest
+  if [[ $(wc -l < "${SAMPLE_MANIFEST}") -le 1 ]]; then
+    echo "[$(date)] WARNING: Sample ${SAMPLE_ID} not found in manifest. Skipping."
+    continue
+  fi
+
+  DEMUX_QZA="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-paired-end-demux.qza"
+  DEMUX_QZV="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-paired-end-demux.qzv"
+
+  TRIMMED_QZA="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-trimmed-paired-end-demux.qza"
+  TRIMMED_QZV="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-trimmed-paired-end-demux.qzv"
+
+  TABLE_QZA="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-trimmed-table.qza"
+  REP_QZA="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-trimmed-rep-seqs.qza"
+  STATS_QZA="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-trimmed-denoising-stats.qza"
+
+  TABLE_QZV="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-trimmed-table.qzv"
+  REP_QZV="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-trimmed-rep-seqs.qzv"
+  STATS_QZV="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-trimmed-denoising-stats.qzv"
+
+  RETAINED_TABLE_QZA="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-retained-hits-table.qza"
+  RETAINED_TABLE_QZV="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-retained-hits-table.qzv"
+  RETAINED_REP_QZA="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-retained-hits-rep-seqs.qza"
+  RETAINED_REP_QZV="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-retained-hits-rep-seqs.qzv"
+
+  LENFILTER_REP_QZA="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-retained-more-${MIN_SEQ_LEN}-rep-seqs.qza"
+  LENFILTER_REP_QZV="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-retained-more-${MIN_SEQ_LEN}-rep-seqs.qzv"
+  LENFILTER_TABLE_QZA="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-retained-more-${MIN_SEQ_LEN}-table.qza"
+  LENFILTER_TABLE_QZV="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-retained-more-${MIN_SEQ_LEN}-table.qzv"
+
+  TAXONOMY_QZA="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-taxonomy.qza"
+  TAXONOMY_QZV="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-taxonomy.qzv"
+  TAXA_BARPLOT_QZV="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-taxa-barplot.qzv"
+
+  TREE_DIR="${SAMPLE_DIR}/iqtree"
+  mkdir -p "${TREE_DIR}"
+  TREE_FASTA="${TREE_DIR}/${SAMPLE_ID}-${MARKER}-sequences.fasta"
+  ALIGNED_FASTA="${TREE_DIR}/${SAMPLE_ID}-${MARKER}_aligned.fa"
+  TRIMMED_FASTA="${TREE_DIR}/${SAMPLE_ID}-${MARKER}_trimmed.fa"
+
+  TMP_EXPORT_DIR="${SAMPLE_DIR}/tmp_retained_export"
+  TMP_LEN_FASTA="${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}_tmp_lenfiltered.fasta"
+  TMP_TREE_EXPORT="${TREE_DIR}/exported_seqs"
+
+  #############################################################################
+  # STEP 1. IMPORT READS
+  #############################################################################
+
+  echo "[$(date)] STEP 1: Importing reads for ${SAMPLE_ID}..."
+  qiime tools import \
+    --type 'SampleData[PairedEndSequencesWithQuality]' \
+    --input-path "${SAMPLE_MANIFEST}" \
+    --output-path "${DEMUX_QZA}" \
+    --input-format PairedEndFastqManifestPhred33V2
+
+  qiime demux summarize \
+    --i-data "${DEMUX_QZA}" \
+    --o-visualization "${DEMUX_QZV}"
+
+  #############################################################################
+  # STEP 2. TRIM PRIMERS
+  #############################################################################
+
+  echo "[$(date)] STEP 2: Trimming primers for ${SAMPLE_ID}..."
+  qiime cutadapt trim-paired \
+    --i-demultiplexed-sequences "${DEMUX_QZA}" \
+    --p-front-f "${F_PRIMER}" \
+    --p-front-r "${R_PRIMER}" \
+    --p-error-rate 0.1 \
+    --p-overlap 3 \
+    --p-discard-untrimmed \
+    --p-match-adapter-wildcards True \
+    --p-match-read-wildcards False \
+    --p-minimum-length "${MIN_SEQ_LEN}" \
+    --o-trimmed-sequences "${TRIMMED_QZA}" \
+    --verbose > "${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-cutadapt-output.txt" 2>&1
+
+  qiime demux summarize \
+    --i-data "${TRIMMED_QZA}" \
+    --o-visualization "${TRIMMED_QZV}"
+
+  #############################################################################
+  # STEP 3. DADA2
+  #############################################################################
+
+  echo "[$(date)] STEP 3: Running DADA2 for ${SAMPLE_ID}..."
+  if ! qiime dada2 denoise-paired \
+      --i-demultiplexed-seqs "${TRIMMED_QZA}" \
+      --p-trim-left-f "${TRIM_LEFT_F}" \
+      --p-trim-left-r "${TRIM_LEFT_R}" \
+      --p-trunc-len-f "${TRUNC_LEN_F}" \
+      --p-trunc-len-r "${TRUNC_LEN_R}" \
+      --p-n-threads "${THREADS}" \
+      --o-table "${TABLE_QZA}" \
+      --o-representative-sequences "${REP_QZA}" \
+      --o-denoising-stats "${STATS_QZA}" \
+      --verbose > "${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-dada2-output.txt" 2>&1; then
+    echo "[$(date)] WARNING: DADA2 failed for ${SAMPLE_ID}. Skipping sample."
+    continue
+  fi
+
+  qiime feature-table summarize \
+    --i-table "${TABLE_QZA}" \
+    --o-visualization "${TABLE_QZV}" \
+    --m-sample-metadata-file "${SAMPLE_METADATA}"
+
+  qiime feature-table tabulate-seqs \
+    --i-data "${REP_QZA}" \
+    --o-visualization "${REP_QZV}"
+
+  qiime metadata tabulate \
+    --m-input-file "${STATS_QZA}" \
+    --o-visualization "${STATS_QZV}"
+
+  #############################################################################
+  # STEP 4. FILTER LOW-FREQUENCY FEATURES
+  #############################################################################
+
+  echo "[$(date)] STEP 4: Filtering low-frequency features for ${SAMPLE_ID}..."
+  qiime feature-table filter-features \
+    --i-table "${TABLE_QZA}" \
+    --p-min-frequency "${MIN_FEATURE_FREQ}" \
+    --o-filtered-table "${RETAINED_TABLE_QZA}"
 
   if ! qiime feature-table summarize \
-      --i-table "${SAMPLE_TABLE_QZA}" \
-      --o-visualization "${SAMPLE_TABLE_QZV}" \
+      --i-table "${RETAINED_TABLE_QZA}" \
+      --o-visualization "${RETAINED_TABLE_QZV}" \
       --m-sample-metadata-file "${SAMPLE_METADATA}" >/dev/null 2>&1; then
-    echo "[$(date)] WARNING: Sample ${SAMPLE_ID} has no retained features after filtering. Skipping."
-    rm -f "${SAMPLE_TABLE_QZA}" "${SAMPLE_METADATA}"
+    echo "[$(date)] WARNING: No retained features for ${SAMPLE_ID} after frequency filtering. Skipping."
     continue
   fi
 
   qiime feature-table filter-seqs \
-    --i-data "${LENFILTER_REP_QZA}" \
-    --i-table "${SAMPLE_TABLE_QZA}" \
-    --o-filtered-data "${SAMPLE_REP_QZA}"
+    --i-data "${REP_QZA}" \
+    --i-table "${RETAINED_TABLE_QZA}" \
+    --o-filtered-data "${RETAINED_REP_QZA}"
 
   qiime feature-table tabulate-seqs \
-    --i-data "${SAMPLE_REP_QZA}" \
-    --o-visualization "${SAMPLE_REP_QZV}"
+    --i-data "${RETAINED_REP_QZA}" \
+    --o-visualization "${RETAINED_REP_QZV}"
+
+  #############################################################################
+  # STEP 5. FILTER SEQUENCES BY LENGTH
+  #############################################################################
+
+  echo "[$(date)] STEP 5: Filtering sequences by length for ${SAMPLE_ID}..."
+  rm -rf "${TMP_EXPORT_DIR}"
+  mkdir -p "${TMP_EXPORT_DIR}"
+
+  qiime tools export \
+    --input-path "${RETAINED_REP_QZA}" \
+    --output-path "${TMP_EXPORT_DIR}"
+
+  awk -v minlen="${MIN_SEQ_LEN}" '
+  BEGIN { RS=">"; FS="\n" }
+  NR > 1 {
+    header=$1
+    seq=""
+    for (i=2; i<=NF; i++) seq=seq $i
+    if (length(seq) >= minlen) {
+      print ">" header
+      print seq
+    }
+  }
+  ' "${TMP_EXPORT_DIR}/dna-sequences.fasta" > "${TMP_LEN_FASTA}"
+
+  if [[ ! -s "${TMP_LEN_FASTA}" ]]; then
+    echo "[$(date)] WARNING: No sequences passed length filter for ${SAMPLE_ID}. Skipping."
+    continue
+  fi
+
+  qiime tools import \
+    --type 'FeatureData[Sequence]' \
+    --input-path "${TMP_LEN_FASTA}" \
+    --output-path "${LENFILTER_REP_QZA}"
+
+  qiime feature-table tabulate-seqs \
+    --i-data "${LENFILTER_REP_QZA}" \
+    --o-visualization "${LENFILTER_REP_QZV}"
+
+  qiime feature-table filter-features \
+    --i-table "${RETAINED_TABLE_QZA}" \
+    --m-metadata-file "${LENFILTER_REP_QZA}" \
+    --o-filtered-table "${LENFILTER_TABLE_QZA}"
+
+  if ! qiime feature-table summarize \
+      --i-table "${LENFILTER_TABLE_QZA}" \
+      --o-visualization "${LENFILTER_TABLE_QZV}" \
+      --m-sample-metadata-file "${SAMPLE_METADATA}" >/dev/null 2>&1; then
+    echo "[$(date)] WARNING: No features left after length filtering for ${SAMPLE_ID}. Skipping."
+    continue
+  fi
+
+  rm -rf "${TMP_EXPORT_DIR}"
+  rm -f "${TMP_LEN_FASTA}"
+
+  #############################################################################
+  # STEP 6. CLASSIFICATION
+  #############################################################################
+
+  echo "[$(date)] STEP 6: Classifying ${SAMPLE_ID}..."
+  qiime feature-classifier classify-sklearn \
+    --i-classifier "${CLASSIFIER}" \
+    --i-reads "${LENFILTER_REP_QZA}" \
+    --o-classification "${TAXONOMY_QZA}"
+
+  qiime metadata tabulate \
+    --m-input-file "${TAXONOMY_QZA}" \
+    --o-visualization "${TAXONOMY_QZV}"
 
   qiime taxa barplot \
-    --i-table "${SAMPLE_TABLE_QZA}" \
+    --i-table "${LENFILTER_TABLE_QZA}" \
     --i-taxonomy "${TAXONOMY_QZA}" \
     --m-metadata-file "${SAMPLE_METADATA}" \
-    --o-visualization "${SAMPLE_TAXA_BARPLOT_QZV}"
+    --o-visualization "${TAXA_BARPLOT_QZV}"
 
-  rm -rf "${SAMPLE_EXPORT_DIR}"
-  mkdir -p "${SAMPLE_EXPORT_DIR}"
+  #############################################################################
+  # EXPORT TABLE / SEQS
+  #############################################################################
+
   qiime tools export \
-    --input-path "${SAMPLE_TABLE_QZA}" \
-    --output-path "${SAMPLE_EXPORT_DIR}"
+    --input-path "${LENFILTER_TABLE_QZA}" \
+    --output-path "${SAMPLE_DIR}/exported_table"
 
   if command -v biom >/dev/null 2>&1; then
     biom convert \
-      -i "${SAMPLE_EXPORT_DIR}/feature-table.biom" \
+      -i "${SAMPLE_DIR}/exported_table/feature-table.biom" \
       -o "${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-table.tsv" \
       --to-tsv
   fi
 
-  rm -rf "${SAMPLE_REP_EXPORT_DIR}"
-  mkdir -p "${SAMPLE_REP_EXPORT_DIR}"
   qiime tools export \
-    --input-path "${SAMPLE_REP_QZA}" \
-    --output-path "${SAMPLE_REP_EXPORT_DIR}"
+    --input-path "${LENFILTER_REP_QZA}" \
+    --output-path "${SAMPLE_DIR}/exported_rep_seqs"
 
-  mv "${SAMPLE_REP_EXPORT_DIR}/dna-sequences.fasta" \
+  mv "${SAMPLE_DIR}/exported_rep_seqs/dna-sequences.fasta" \
      "${SAMPLE_DIR}/${SAMPLE_ID}-${MARKER}-rep-seqs.fasta"
+
+  #############################################################################
+  # STEP 7. TREE PER SAMPLE
+  #############################################################################
+
+  echo "[$(date)] STEP 7: Building tree for ${SAMPLE_ID}..."
+  rm -rf "${TMP_TREE_EXPORT}"
+  mkdir -p "${TMP_TREE_EXPORT}"
+
+  qiime tools export \
+    --input-path "${LENFILTER_REP_QZA}" \
+    --output-path "${TMP_TREE_EXPORT}"
+
+  mv "${TMP_TREE_EXPORT}/dna-sequences.fasta" "${TREE_FASTA}"
+  rm -rf "${TMP_TREE_EXPORT}"
+
+  # Count sequences; skip tree if fewer than 2
+  NSEQ=$(grep -c '^>' "${TREE_FASTA}" || true)
+  if [[ "${NSEQ}" -lt 2 ]]; then
+    echo "[$(date)] WARNING: Sample ${SAMPLE_ID} has fewer than 2 sequences after filtering. Skipping tree."
+    continue
+  fi
+
+  clustalo \
+    -i "${TREE_FASTA}" \
+    -o "${ALIGNED_FASTA}" \
+    -t DNA \
+    --threads="${THREADS}" \
+    --force
+
+  trimal \
+    -in "${ALIGNED_FASTA}" \
+    -out "${TRIMMED_FASTA}" \
+    -automated1
+
+  iqtree2 \
+    -s "${TRIMMED_FASTA}" \
+    --prefix "${TREE_DIR}/${SAMPLE_ID}-${MARKER}_tree" \
+    -m MFP \
+    -bb 1000 \
+    -alrt 1000 \
+    -nt AUTO \
+    -redo
+
+  echo "[$(date)] Finished sample: ${SAMPLE_ID}"
 done
-
-###############################################################################
-# STEP 7. EXPORT SEQUENCES FOR TREE
-###############################################################################
-
-echo "[$(date)] STEP 7: Exporting representative sequences for tree..."
-
-TMP_TREE_EXPORT="${TREE_DIR}/exported_seqs"
-rm -rf "${TMP_TREE_EXPORT}"
-mkdir -p "${TMP_TREE_EXPORT}"
-
-qiime tools export \
-  --input-path "${LENFILTER_REP_QZA}" \
-  --output-path "${TMP_TREE_EXPORT}"
-
-mv "${TMP_TREE_EXPORT}/dna-sequences.fasta" "${TREE_FASTA}"
-rm -rf "${TMP_TREE_EXPORT}"
-
-###############################################################################
-# STEP 8. ALIGNMENT
-###############################################################################
-
-echo "[$(date)] STEP 8: Aligning sequences with Clustal Omega..."
-
-clustalo \
-  -i "${TREE_FASTA}" \
-  -o "${ALIGNED_FASTA}" \
-  -t DNA \
-  --threads="${THREADS}" \
-  --force
-
-###############################################################################
-# STEP 9. TRIM ALIGNMENT
-###############################################################################
-
-echo "[$(date)] STEP 9: Trimming alignment with trimAl..."
-
-trimal \
-  -in "${ALIGNED_FASTA}" \
-  -out "${TRIMMED_FASTA}" \
-  -automated1
-
-###############################################################################
-# STEP 10. BUILD TREE
-###############################################################################
-
-echo "[$(date)] STEP 10: Building phylogenetic tree with IQ-TREE2..."
-
-iqtree2 \
-  -s "${TRIMMED_FASTA}" \
-  --prefix "${TREE_DIR}/${MARKER}_tree" \
-  -m MFP \
-  -bb 1000 \
-  -alrt 1000 \
-  -nt AUTO \
-  -redo
 
 ###############################################################################
 # DONE
@@ -665,34 +609,4 @@ iqtree2 \
 
 echo
 echo "[$(date)] DONE."
-echo
-echo "===================== MAIN OUTPUTS ====================="
-echo "Classifier used               : ${CLASSIFIER}"
-echo "QIIME artifacts / visualizations:"
-echo "  Imported demux              : ${DEMUX_QZA}"
-echo "  Demux summary               : ${DEMUX_QZV}"
-echo "  Trimmed demux               : ${TRIMMED_QZA}"
-echo "  Trimmed demux summary       : ${TRIMMED_QZV}"
-echo "  DADA2 table                 : ${TABLE_QZA}"
-echo "  DADA2 rep seqs              : ${REP_QZA}"
-echo "  DADA2 stats                 : ${STATS_QZA}"
-echo "  DADA2 table summary         : ${TABLE_QZV}"
-echo "  DADA2 rep seq summary       : ${REP_QZV}"
-echo "  DADA2 stats summary         : ${STATS_QZV}"
-echo "  Frequency-filtered table    : ${RETAINED_TABLE_QZA}"
-echo "  Frequency-filtered rep seqs : ${RETAINED_REP_QZA}"
-echo "  Length-filtered table       : ${LENFILTER_TABLE_QZA}"
-echo "  Length-filtered rep seqs    : ${LENFILTER_REP_QZA}"
-echo "  Taxonomy                    : ${TAXONOMY_QZA}"
-echo "  Taxonomy table              : ${TAXONOMY_QZV}"
-echo "  Taxa barplot                : ${TAXA_BARPLOT_QZV}"
-echo
-echo "Per-sample outputs:"
-echo "  Per-sample directory        : ${PER_SAMPLE_DIR}"
-echo
-echo "Tree outputs:"
-echo "  Tree FASTA                  : ${TREE_FASTA}"
-echo "  Alignment                   : ${ALIGNED_FASTA}"
-echo "  Trimmed alignment           : ${TRIMMED_FASTA}"
-echo "  IQ-TREE prefix              : ${TREE_DIR}/${MARKER}_tree"
-echo "========================================================"
+echo "Per-sample results are in: ${PER_SAMPLE_DIR}"
