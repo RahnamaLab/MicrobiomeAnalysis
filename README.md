@@ -1,17 +1,56 @@
 # MicrobiomeAnalysis
-The goal of the project was to classify, at the highest taxonomic resolution possible, strains of
-Fusarium spp. from crude cannabis DNA extracts. These data would be paired with mycotoxin
-presence/absence and additional datapoints to further understand the role of Fusarium on
-cannabis production.
+The goal of this project is to classify Fusarium species at the highest possible taxonomic resolution from crude cannabis DNA extracts. These results are integrated with mycotoxin presence/absence and additional metadata to better understand the role of Fusarium in cannabis production.
+
 # Kraken 2
-Within the Kraken 2 workflow, raw reads were classified using a prebuilt database that includes the standard database plus RefSeq, protozoa, fungi, and plants.
-## 1. Download Kraken2 Database
+Within the Kraken2 workflow, raw reads are taxonomically classified using a prebuilt database that includes the standard database along with RefSeq, protozoa, fungi, and plant sequences.
 
 ```bash
+
+## 1. Download Kraken2 Database
 wget https://genome-idx.s3.amazonaws.com/kraken/k2_pluspf_20260226.tar.gz
 tar -xvzf k2_pluspf_20260226.tar.gz
-#Check Database Content
+
+# Check database content
 cut -f1 library_report.tsv | sort | uniq -c
 
+## 2. Run Kraken2
+sbatch kraken2.sh
+
+```
 # QIIME 2
-Within the QIIME 2 workflow, reads were trimmed of adapter sequences, split into independent data sets based on target amplicon (i.e., EF1α, ITS1, ITS2), quality trimmed, and processed for quality control. During quality control, paired-end reads were merged. ITS-1 and ITS-2 sequences were classified using a Naive Bayes classifier trained on fungal sequences from the UNITE database clustered at 99% identity. EF1α amplicons were classified using a Native Bayes classifier trained on the Fuseroid ID database* (version 12 March 2025) obtained from https://www.fusarium.org/page/Sequencesindatabase and filtered to only contain EF1α sequences. When the classifier was applied to the reference database to assess the best case classification of EF1α amplicons, it achieved a precision and recall of 0.98 and 0.92 (scale of 0.0-1.0), respectively, for species-level classification.
+
+Within the QIIME 2 workflow, reads are first trimmed to remove adapter and primer sequences, then separated into independent datasets based on target amplicons (EF1α, ITS1, and ITS2). Reads are quality-filtered, and paired-end reads are merged during denoising.
+
+ITS1 and ITS2 sequences are classified using a Naive Bayes classifier trained on fungal sequences from the UNITE database clustered at 99% identity.
+
+EF1α amplicons are classified using a Naive Bayes classifier trained on the Fusarioid ID database (latest version), filtered to include only EF1α sequences:
+https://www.fusarium.org/page/Sequencesindatabase
+
+Evaluation of the EF1α classifier on the reference dataset achieved a precision of 0.98 and recall of 0.92 for species-level classification.
+
+Finally, phylogenetic trees are constructed using filtered representative sequences, both across all samples and per sample.
+
+```bash
+
+## 1. Download EF1α Database
+wget http://www.fusarium.org/images/alignments/sequencesindatabase10022026.zip
+unzip sequencesindatabase10022026.zip
+
+## 2. Download ITS Database (UNITE)
+# Download: sh_qiime_release_19.02.2025.tgz from:
+# https://doi.plutof.ut.ee/doi/10.15156/BIO/3301241
+tar -xvzf sh_qiime_release_19.02.2025.tgz
+
+## 3. Run QIIME2 (all samples)
+sbatch qiime2.sh EF1
+sbatch qiime2.sh ITS1
+sbatch qiime2.sh ITS2
+
+## 4. Run QIIME2 (per sample)
+sbatch qiime2_per_sample.sh EF1
+sbatch qiime2_per_sample.sh ITS1
+sbatch qiime2_per_sample.sh ITS2
+
+```
+```
+
