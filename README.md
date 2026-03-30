@@ -37,9 +37,11 @@ wget http://www.fusarium.org/images/alignments/sequencesindatabase10022026.zip
 unzip sequencesindatabase10022026.zip
 
 ## 2. Download ITS Database (UNITE)
+mkdir UNITE_QIIME && cd UNITE_QIIME
 # Download: sh_qiime_release_19.02.2025.tgz from:
 # https://doi.plutof.ut.ee/doi/10.15156/BIO/3301241
 tar -xvzf sh_qiime_release_19.02.2025.tgz
+cd ..
 
 ## 3. Run QIIME2 (all samples)
 sbatch qiime2.sh EF1
