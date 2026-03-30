@@ -1,6 +1,9 @@
 # MicrobiomeAnalysis
 The goal of this project is to classify Fusarium species at the highest possible taxonomic resolution from crude cannabis DNA extracts. These results are integrated with mycotoxin presence/absence and additional metadata to better understand the role of Fusarium in cannabis production.
 
+# Data
+You can download the data from this link.*****
+
 # Kraken 2
 Within the Kraken2 workflow, raw reads are taxonomically classified using a prebuilt database that includes the standard database along with RefSeq, protozoa, fungi, and plant sequences.
 
@@ -54,5 +57,3 @@ sbatch qiime2_per_sample.sh ITS1
 sbatch qiime2_per_sample.sh ITS2
 
 ```
-```
-
