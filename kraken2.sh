@@ -1,29 +1,11 @@
 #!/bin/bash
 #SBATCH --job-name=kraken2_full
-#SBATCH --account=phd-ssalimi42
-#SBATCH --time=7-00:00:00
-#SBATCH --nodes=1
-#SBATCH --cpus-per-task=16
-#SBATCH --mem=128G
 
 set -euo pipefail
 
 ############################################
 # 1. LOAD SOFTWARE
 ############################################
-
-# Initialize conda for non-interactive SLURM shell
-__conda_setup="$('/home/tntech.edu/ssalimi42/miniconda3/bin/conda' 'shell.bash' 'hook' 2> /dev/null)"
-if [ $? -eq 0 ]; then
-    eval "$__conda_setup"
-else
-    if [ -f "/home/tntech.edu/ssalimi42/miniconda3/etc/profile.d/conda.sh" ]; then
-        . "/home/tntech.edu/ssalimi42/miniconda3/etc/profile.d/conda.sh"
-    else
-        export PATH="/home/tntech.edu/ssalimi42/miniconda3/bin:$PATH"
-    fi
-fi
-unset __conda_setup
 
 conda activate kraken2_env
 
@@ -32,7 +14,7 @@ conda activate kraken2_env
 ############################################
 
 # Directory containing your paired-end FASTQ files
-READDIR="/home/tntech.edu/ssalimi42/work/other_project/max/data"
+READDIR="data"
 
 # Main output directory
 OUTDIR="kraken2_results_v2"
