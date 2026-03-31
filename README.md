@@ -31,7 +31,9 @@ https://www.fusarium.org/page/Sequencesindatabase
 
 Evaluation of the EF1α classifier on the reference dataset achieved a precision of 0.98 and recall of 0.92 for species-level classification.
 
-Finally, phylogenetic trees are constructed using filtered representative sequences, both across all samples and per sample.
+## Phylogenetic Tree Construction
+
+Phylogenetic trees were generated from the filtered representative ASV sequences obtained after QIIME 2 processing. For the combined analysis, sequences from all samples were aligned using Clustal Omega, and poorly aligned regions were removed with trimAl. A maximum likelihood phylogenetic tree was then constructed using IQ-TREE2 with automatic model selection (ModelFinder) and branch support assessed using ultrafast bootstrap and SH-aLRT tests (1000 replicates each). In addition to the combined dataset, trees were also constructed separately for each sample by first filtering sample-specific ASVs and repeating the same alignment and tree-building procedure. This approach enables both global comparison of diversity across all samples and detailed evaluation of within-sample variation.
 
 ```bash
 
