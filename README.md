@@ -5,7 +5,7 @@ The goal of this project is to classify Fusarium species at the highest possible
 You can download the data from this link.*****
 
 # Taxonomic Classification of Sequencing Reads
-For the taxonomic assignment of metagenomic reads, I utilize Kraken2, a k-mer–based tool that provides fast and high-accuracy classification by matching sequencing reads against a comprehensive genomic database. Its primary purpose is to process raw DNA reads (e.g., FASTQ files) and determine which organisms are present and their relative abundance within a sample.
+For the taxonomic assignment of metagenomic reads, I utilize **Kraken2**, a k-mer–based tool that provides fast and high-accuracy classification by matching sequencing reads against a comprehensive genomic database. Its primary purpose is to process raw DNA reads (e.g., FASTQ files) and determine which organisms are present and their relative abundance within a sample.
 
 Kraken2 is widely applied in microbiome, environmental, and pathogen detection studies, where understanding the composition and diversity of organisms is the main objective.
 
@@ -38,7 +38,7 @@ sbatch kraken2.sh
 
 ```
 # Amplicon-Based Microbiome Analysis
-To process and analyze amplicon sequencing data (e.g., 16S rRNA, ITS, and EF1α) to identify and quantify microbial and fungal communities within a sample, QIIME 2 is used. Its main purpose is to convert raw sequencing reads (FASTQ files) into biologically meaningful outputs such as amplicon sequence variants (ASVs), taxonomic assignments, and community composition profiles.
+To process and analyze amplicon sequencing data (e.g., 16S rRNA, ITS, and EF1α) to identify and quantify microbial and fungal communities within a sample, **QIIME 2** is used. Its main purpose is to convert raw sequencing reads (FASTQ files) into biologically meaningful outputs such as amplicon sequence variants (ASVs), taxonomic assignments, and community composition profiles.
 
 QIIME 2 provides a reproducible, high-resolution, and widely accepted framework for microbiome analysis. It is specifically designed to handle marker-gene datasets and allows accurate reconstruction of sequences while minimizing sequencing errors. Compared to traditional OTU-based approaches, QIIME 2 uses ASVs, which improves taxonomic resolution and consistency across studies.
 
@@ -100,4 +100,9 @@ In contrast, a subset of samples displays more diverse profiles, with multiple t
 
 ### Phylogenetic Tree
 Phylogenetic trees were inferred using **IQ-TREE** (maximum-likelihood) and visualized using **iTOL** (https://itol.embl.de/). Alternatively, tree visualization can be performed locally using the provided R script (`tree_visualize.R`).
+
+![Phylogenetic Tree](figures/ITS2_FUS-21_tree.png)
+
+Phylogenetic tree generated from the ITS2 sample `ITS2_FUS-21_S57_L001.treefile` using **IQ-TREE** (maximum-likelihood). 
+The tree shows clustering of sequences into major fungal groups, including *Aspergillus*, *Penicillium*, *Fusarium*, *Alternaria*, *Cladosporium*, and *Simplicillium*. Closely related taxa group together, indicating sequence similarity, while distinct branches reflect divergence among taxa. Non-fungal sequences (e.g., *Cannabis sativa*) appear as separate clusters, serving as clear outgroups.
 
