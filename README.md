@@ -88,3 +88,16 @@ sbatch qiime2_per_sample.sh ITS2
 
 ```
 ## Amplicon-Based Microbiome Analysis Results  
+
+### ITS2 Taxonomic Composition
+The ITS2-based taxonomic profiling reveals substantial variation in fungal community composition across samples. Most samples are dominated by a single taxon, indicating strong enrichment patterns rather than evenly distributed communities. A large proportion of samples show high relative abundance of Ascomycota-affiliated taxa, with multiple samples approaching near-complete dominance by a single family-level group.
+
+In contrast, a subset of samples displays more diverse profiles, with multiple taxa contributing to the overall composition. These mixed communities are characterized by moderate proportions of several fungal groups rather than a single dominant lineage.
+
+*Generated from `ITS2-taxa-barplot.qzv` using QIIME 2 View (https://view.qiime2.org/).*
+
+![ITS2 Taxa Barplot](figures/ITS2_taxa_barplot.png)
+
+### Phylogenetic Tree
+Phylogenetic trees were inferred using **IQ-TREE** (maximum-likelihood) and visualized using **iTOL** (https://itol.embl.de/). Alternatively, tree visualization can be performed locally using the provided R script (`tree_visualize.R`).
+
