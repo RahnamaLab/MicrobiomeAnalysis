@@ -4,8 +4,25 @@ The goal of this project is to classify Fusarium species at the highest possible
 # Data
 You can download the data from this link.*****
 
-# Kraken 2
+# Taxonomic Classification of Sequencing Reads
+For the taxonomic assignment of metagenomic reads, I utilize Kraken2, a k-mer–based tool that provides fast and high-accuracy classification by matching sequencing reads against a comprehensive genomic database. Its primary purpose is to process raw DNA reads (e.g., FASTQ files) and determine which organisms are present and their relative abundance within a sample.
+
+Kraken2 is widely applied in microbiome, environmental, and pathogen detection studies, where understanding the composition and diversity of organisms is the main objective.
+
+### It enables:
+- Taxonomic assignment of reads to organisms (e.g., bacteria, fungi, viruses)
+- Profiling of microbial communities in metagenomic datasets
+- Detection of specific taxa or potential contaminants in sequencing data
+
 Within the Kraken2 workflow, raw reads are taxonomically classified using a prebuilt database that includes the standard database along with RefSeq, protozoa, fungi, and plant sequences.
+
+## Taxonomic Classification Results  
+The figure shows the genus-level taxonomic composition of all samples based on Kraken2 classification, displaying the top 20 most abundant genera. Each bar represents a sample, and colors indicate different genera, with the y-axis showing relative abundance (%).
+
+Across samples, several genera dominate the community structure, particularly Fusarium, Aspergillus, Penicillium, and Streptomyces, reflecting a strong fungal presence consistent with your dataset focus. Some samples show high dominance by a single genus, while others exhibit more diverse compositions. Minor genera and less abundant taxa are grouped as “Other,” highlighting overall community complexity.
+
+This visualization demonstrates variation in microbial composition between samples, enabling comparison of dominant taxa and identification of patterns such as enrichment of specific genera or potential contaminants (e.g., Homo or Mycoplasma).
+![Kraken2 Genus Composition](figures/kraken_genus_stacked_barplot.png)
 
 ```bash
 
@@ -20,7 +37,18 @@ cut -f1 library_report.tsv | sort | uniq -c
 sbatch kraken2.sh
 
 ```
-# QIIME 2
+# Amplicon-Based Microbiome Analysis
+To process and analyze amplicon sequencing data (e.g., 16S rRNA, ITS, and EF1α) to identify and quantify microbial and fungal communities within a sample, QIIME 2 is used. Its main purpose is to convert raw sequencing reads (FASTQ files) into biologically meaningful outputs such as amplicon sequence variants (ASVs), taxonomic assignments, and community composition profiles.
+
+QIIME 2 provides a reproducible, high-resolution, and widely accepted framework for microbiome analysis. It is specifically designed to handle marker-gene datasets and allows accurate reconstruction of sequences while minimizing sequencing errors. Compared to traditional OTU-based approaches, QIIME 2 uses ASVs, which improves taxonomic resolution and consistency across studies.
+
+It is used in this project because it enables:
+
+- End-to-end analysis from raw reads to final taxonomic profiles  
+- High-resolution sequence inference using denoising methods (e.g., DADA2)  
+- Integration with curated reference databases (e.g., SILVA, UNITE, FusarioidID)  
+- Reproducible and transparent workflows suitable for research and publication  
+- Interactive visualization of microbiome composition across samples  
 
 Within the QIIME 2 workflow, reads are first trimmed to remove adapter and primer sequences, then separated into independent datasets based on target amplicons (EF1α, ITS1, and ITS2). Reads are quality-filtered, and paired-end reads are merged during denoising.
 
@@ -59,3 +87,4 @@ sbatch qiime2_per_sample.sh ITS1
 sbatch qiime2_per_sample.sh ITS2
 
 ```
+## Amplicon-Based Microbiome Analysis Results  
