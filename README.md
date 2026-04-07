@@ -99,7 +99,7 @@ In contrast, a subset of samples displays more diverse profiles, with multiple t
 ![ITS2 Taxa Barplot](figures/ITS2_taxa_barplot.png)
 
 ### Phylogenetic Tree
-Phylogenetic trees were inferred using **IQ-TREE** (maximum-likelihood) and visualized using **iTOL** (https://itol.embl.de/). Alternatively, tree visualization can be performed locally using the provided R script (`tree_visualize.R`).
+Phylogenetic trees were inferred using **IQ-TREE** (maximum-likelihood) and visualized using **iTOL** (https://itol.embl.de/). Alternatively, tree visualization can be performed locally using the provided R script (`tree_visualize_all.R or tree_visualize_per_sample.R`).
 
 ![Phylogenetic Tree](figures/ITS2_FUS-21_tree.png)
 
