@@ -4,7 +4,7 @@ library(ggtree)
 library(tidyverse)
 library(ggpubr)
 
-setwd("/Users/ssalimi42/Library/CloudStorage/OneDrive-SharedLibraries-TennesseeTechUniversity/Other_Project - General/max")
+setwd("ADD YOUR PATH")
 
 out_dir <- "tree_plots_all"
 
