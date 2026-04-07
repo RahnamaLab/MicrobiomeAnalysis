@@ -22,6 +22,7 @@ The figure shows the genus-level taxonomic composition of all samples based on K
 Across samples, several genera dominate the community structure, particularly Fusarium, Aspergillus, Penicillium, and Streptomyces, reflecting a strong fungal presence consistent with your dataset focus. Some samples show high dominance by a single genus, while others exhibit more diverse compositions. Minor genera and less abundant taxa are grouped as “Other,” highlighting overall community complexity.
 
 This visualization demonstrates variation in microbial composition between samples, enabling comparison of dominant taxa and identification of patterns such as enrichment of specific genera or potential contaminants (e.g., Homo or Mycoplasma).
+
 ![Kraken2 Genus Composition](figures/kraken_genus_stacked_barplot.png)
 
 ```bash
