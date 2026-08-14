@@ -79,7 +79,7 @@ cd ..
 
 ## 3. Run QIIME2 (all samples)
 sbatch qiime2.sh EF1
-sbatch qiime2.sh ITS1
+sbatch qiime2_its1.sh ITS1
 sbatch qiime2.sh ITS2
 
 ## 4. Run QIIME2 (per sample)
