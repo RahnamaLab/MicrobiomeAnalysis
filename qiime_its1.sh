@@ -8,7 +8,7 @@ set -euo pipefail
 # INPUT FILES
 ###############################################################################
 
-MANIFEST="manifest_fixed.tsv"
+MANIFEST="manifest.tsv"
 METADATA="metadata.tsv"
 
 ###############################################################################
